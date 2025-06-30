@@ -7,12 +7,23 @@ from pprint import pprint
 import openai
 import requests
 
+import datetime
 # -------------------------- Configuration -------------------------- #
 
 # Set your OpenAI API key
-openai.api_key = 'put your key here'
+# openai.api_key = 'put your key here'
 
+from dotenv import load_dotenv
+load_dotenv(override=True)
 
+openai_api_key = os.getenv('OPENAI_API_KEY')
+
+if openai_api_key:
+    print(f"OpenAI API Key exists and begins {openai_api_key[:8]}")
+else:
+    print("OpenAI API Key not set - please head to the troubleshooting guide in the guides folder")
+
+llm_model = "gpt-4o-mini"
 
 # Maximum number of search rounds
 MAX_ROUNDS = 3
@@ -40,8 +51,10 @@ def google_search(query, result_total=10):
         :param params: Additional parameters for the API request.
         :return: Dictionary containing the API request parameters.
         """
-        api_key = "Aput your key here"
-        search_engine_ID = "put your key here"
+        # api_key = "Aput your key here"
+        api_key = os.getenv('GOOGLE_API_KEY')
+        # search_engine_ID = "put your key here"
+        search_engine_ID = os.getenv('SEARCH_ENGINE_ID')
         payload = {
             'key':api_key,
             'q': query,
@@ -102,8 +115,8 @@ def extract_key_claim(content):
     {{"key_claim": "XXX"}}
     """
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
+    response = openai.chat.completions.create(
+        model= llm_model,
         messages=[
             {"role": "system", "content": "You are an assistant that extracts key claims from text."},
             {"role": "user", "content": prompt}
@@ -111,7 +124,7 @@ def extract_key_claim(content):
         temperature=0.3,
     )
 
-    output = response.choices[0].message['content']
+    output = response.choices[0].message.content    
     try:
         key_claim = json.loads(output)["key_claim"]
     except json.JSONDecodeError:
@@ -134,8 +147,8 @@ def generate_query(claim):
     {{"query": "XXX"}}
     """
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
+    response = openai.chat.completions.create(
+        model= llm_model,
         messages=[
             {"role": "system", "content": "You are an assistant that generates search queries based on claims."},
             {"role": "user", "content": prompt}
@@ -143,7 +156,7 @@ def generate_query(claim):
         temperature=0.3,
     )
 
-    output = response.choices[0].message['content']
+    output = response.choices[0].message.content
     try:
         query = json.loads(output)["query"]
     except json.JSONDecodeError:
@@ -179,8 +192,8 @@ def analyze_search_result(search_result, claim):
     To clarify: if the content of the search results does not contradict the claim, but lacks some or all of the information presented in the claim, please use the label "baseless" rather than "negate".
     """
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
+    response = openai.chat.completions.create(
+        model= llm_model,
         messages=[
             {"role": "system", "content": "You are an assistant that analyzes search results against claims."},
             {"role": "user", "content": prompt}
@@ -188,7 +201,7 @@ def analyze_search_result(search_result, claim):
         temperature=0.3,
     )
 
-    output = response.choices[0].message['content']
+    output = response.choices[0].message.content
     try:
         analysis = json.loads(output)
         # Ensure confidence is within [0, 100]
@@ -237,8 +250,8 @@ def make_final_decision2(claim):
         }}
         """
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
+    response = openai.chat.completions.create(
+        model= llm_model,
         messages=[
             {"role": "system", "content": "You are an assistant that makes final decisions based on a claim and multiple pieces of evidence."},
             {"role": "user", "content": prompt}
@@ -246,7 +259,7 @@ def make_final_decision2(claim):
         temperature=0.3,
     )
 
-    output = response.choices[0].message['content']
+    output = response.choices[0].message.content
     try:
         final_decision = json.loads(output)
         # Ensure confidence is within [0, 100]
@@ -303,8 +316,8 @@ def make_final_decision(claim, analyses):
     }}
     """
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
+    response = openai.chat.completions.create(
+        model= llm_model,
         messages=[
             {"role": "system", "content": "You are an assistant that makes final decisions based on a claim and multiple pieces of evidence."},
             {"role": "user", "content": prompt}
@@ -312,7 +325,7 @@ def make_final_decision(claim, analyses):
         temperature=0.3,
     )
 
-    output = response.choices[0].message['content']
+    output = response.choices[0].message.content
     try:
         final_decision = json.loads(output)
         # Ensure confidence is within [0, 100]
@@ -377,8 +390,8 @@ def generate_explanation2(claim, decision, confidence):
         }}
         """
         
-    response = openai.ChatCompletion.create(
-            model="gpt-4",
+    response = openai.chat.completions.create(
+            model= llm_model,
             messages=[
                 {"role": "system", "content": "You are an assistant that provides explanations for decisions."},
                 {"role": "user", "content": prompt}
@@ -386,7 +399,7 @@ def generate_explanation2(claim, decision, confidence):
             temperature=0.3,
         )
 
-    output = response.choices[0].message['content']
+    output = response.choices[0].message.content
     explanation_data.append({
             "type": "evidence",
             "content": output.strip()
@@ -554,4 +567,27 @@ def process_content(content):
     return final_decision, explanation
             
 
+if __name__ == "__main__":
+    content = input("Enter the content to verify: ")
+    decision, explanation = process_content(content)
 
+    # Create output directory if it doesn't exist
+    output_dir = "timestamps"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Generate timestamped filename
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # filename = f"result_{timestamp}.json"
+    filename = os.path.join(output_dir, f"result_{timestamp}.json")
+
+    # Save output
+    output = {
+        "input": content,
+        "decision": decision,
+        "explanation": explanation
+    }
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(output, f, indent=2, ensure_ascii=False)
+
+    print(f"\n✅ Results saved to {filename}")
